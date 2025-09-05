@@ -182,7 +182,7 @@ if st.button("📊 Dự đoán theo tần suất"):
     baseline = baseline_prediction(st.session_state["data"])
     st.info(f"🔍 Dự đoán theo thống kê: {baseline}")
 
-# Hiển thị kết quả dự đoán
+# Hiện kết quả dự đoán
 if show_lstm or show_gru:
     model_type = "LSTM" if show_lstm else "GRU"
     st.subheader(f"🔮 Dự đoán Baccarat bằng {model_type}")
@@ -191,4 +191,16 @@ if show_lstm or show_gru:
             if st.session_state["trained_model"] is None:
                 model, history = train_tf_model(st.session_state["data"], model_type, epochs=epochs)
                 st.session_state["trained_model"] = model
-                accuracy =
+                accuracy = history.history["accuracy"][-1]
+                st.session_state["accuracy"] = accuracy
+                st.write(f"✅ Độ chính xác mô hình {model_type}: {round(accuracy * 100, 2)}%")
+            else:
+                st.write("✅ Mô hình đã được huấn luyện trước đó.")
+                accuracy = st.session_state.get("accuracy", None)
+                if accuracy is not None:
+                    st.write(f"✅ Độ chính xác mô hình {model_type}: {round(accuracy * 100, 2)}%")
+                else:
+                    st.info("ℹ️ Chưa có thông tin độ chính xác.")
+    else:
+        st.warning("⚠️ Cần ít nhất 10 kết quả.")
+
