@@ -9,12 +9,16 @@ import torch.nn as nn
 import torch.optim as optim
 
 st.set_page_config(page_title="Baccarat AI", layout="wide")
+
+# Khởi tạo session state
 if "new_result" not in st.session_state:
     st.session_state["new_result"] = ""
 if "trained_model" not in st.session_state:
     st.session_state["trained_model"] = None
+if "data" not in st.session_state:
+    st.session_state["data"] = []
 
-# Sidebar menu
+# Sidebar
 st.sidebar.title("🔧 Tuỳ chọn mô hình dự đoán")
 selected_model = st.sidebar.radio("Chọn mô hình", ["Tổng quan", "Markov Chain", "RNN (LSTM)", "GRU", "RNN (PyTorch)"])
 show_markov = st.sidebar.checkbox("🔁 Bật Markov Chain", value=(selected_model == "Markov Chain"))
@@ -23,37 +27,64 @@ show_gru = st.sidebar.checkbox("🔁 Bật GRU", value=(selected_model == "GRU")
 show_torch = st.sidebar.checkbox("🔥 Bật RNN (PyTorch)", value=(selected_model == "RNN (PyTorch)"))
 epochs = st.sidebar.slider("Số epoch huấn luyện", min_value=5, max_value=50, value=15)
 
-if "data" not in st.session_state:
-    st.session_state["data"] = []
+# Tiêu đề nhỏ
+st.markdown("<h3>🎲 Phân tích & Dự đoán Baccarat</h3>", unsafe_allow_html=True)
 
-st.title("🎲 Phân tích & Dự đoán Baccarat")
-st.text_input("Nhập kết quả (Player, Banker, Tie):", key="new_result")
+# Nhập dữ liệu bằng ký tự viết tắt
+input_result = st.text_input("Nhập kết quả (P, B, T):", key="new_result")
+mapping = {"P": "Player", "B": "Banker", "T": "Tie"}
 
-if st.session_state["new_result"]:
-    result = st.session_state["new_result"].strip().capitalize()
-    if result in ["Player", "Banker", "Tie"]:
-        st.session_state["data"].append(result)
-        st.success(f"✅ Đã thêm: {result}")
+if input_result:
+    result = input_result.strip().upper()
+    if result in mapping:
+        st.session_state["data"].append(mapping[result])
+        st.session_state["new_result"] = ""
     else:
-        st.error("❌ Kết quả không hợp lệ.")
+        st.error("❌ Ký tự không hợp lệ. Chỉ dùng P, B, T.")
 
-# Xóa dữ liệu & hoàn tác
-if st.button("🗑️ Xóa toàn bộ dữ liệu"):
-    st.session_state["data"] = []
-    st.success("✅ Đã xóa toàn bộ dữ liệu.")
-
+# Hiển thị tiêu đề + kết quả mới thêm
 if st.session_state["data"]:
-    last_result = st.session_state["data"][-1]
-    if st.button(f"↩️ Hoàn tác kết quả cuối: {last_result}"):
-        st.session_state["data"].pop()
-        st.success(f"✅ Đã hoàn tác: {last_result}")
-
-st.subheader("📋 Dữ liệu hiện tại")
-if st.session_state["data"]:
-    df_history = pd.DataFrame({"Kết quả": st.session_state["data"]})
-    st.dataframe(df_history)
+    last_added = st.session_state["data"][-1]
+    st.markdown(f"<div style='display:flex; justify-content:space-between;'>"
+                f"<h4>📋 Dữ liệu hiện tại</h4>"
+                f"<span style='color:green;'>✅ Đã thêm: {last_added}</span>"
+                f"</div>", unsafe_allow_html=True)
 else:
     st.info("Chưa có dữ liệu.")
+
+# Menu ẩn: xóa & hoàn tác
+with st.expander("⚙️ Tuỳ chọn dữ liệu"):
+    if st.button("🗑️ Xóa toàn bộ dữ liệu"):
+        st.session_state["data"] = []
+        st.success("✅ Đã xóa toàn bộ dữ liệu.")
+    if st.session_state["data"]:
+        last_result = st.session_state["data"][-1]
+        if st.button(f"↩️ Hoàn tác kết quả cuối: {last_result}"):
+            st.session_state["data"].pop()
+            st.success(f"✅ Đã hoàn tác: {last_result}")
+
+# Hiển thị bảng dữ liệu dạng Excel
+if st.session_state["data"]:
+    df_data = st.session_state["data"]
+    max_cols = 6
+    rows = int(np.ceil(len(df_data) / max_cols))
+    matrix = [["" for _ in range(max_cols)] for _ in range(rows)]
+
+    for idx, val in enumerate(df_data):
+        r, c = divmod(idx, max_cols)
+        matrix[r][c] = val
+
+    df_matrix = pd.DataFrame(matrix)
+
+    def highlight(val):
+        styles = {
+            "Player": "color:green; font-weight:bold",
+            "Banker": "color:red; font-weight:bold",
+            "Tie": "color:orange; font-weight:bold"
+        }
+        return styles.get(val, "")
+
+    st.dataframe(df_matrix.style.applymap(highlight), use_container_width=True)
 
 # Tổng quan
 if selected_model == "Tổng quan":
@@ -163,44 +194,4 @@ def train_torch_model(data, seq_length=5, epochs=30):
 def predict_torch(model, data, seq_length=5):
     encoded = encode_sequence(data)
     if len(encoded) < seq_length:
-        return "Không đủ dữ liệu", [0, 0, 0]
-    input_seq = torch.tensor(encoded[-seq_length:], dtype=torch.float32).reshape(1, seq_length, 1)
-    model.eval()
-    with torch.no_grad():
-        output = model(input_seq)
-        probs = torch.softmax(output, dim=1).numpy()[0]
-    mapping = {0: "Player", 1: "Banker", 2: "Tie"}
-    return mapping[np.argmax(probs)], probs
-
-# Dự đoán theo thống kê đơn giản
-def baseline_prediction(data):
-    if not data:
-        return "Không có dữ liệu"
-    return max(set(data), key=data.count)
-
-if st.button("📊 Dự đoán theo tần suất"):
-    baseline = baseline_prediction(st.session_state["data"])
-    st.info(f"🔍 Dự đoán theo thống kê: {baseline}")
-
-# Hiện kết quả dự đoán
-if show_lstm or show_gru:
-    model_type = "LSTM" if show_lstm else "GRU"
-    st.subheader(f"🔮 Dự đoán Baccarat bằng {model_type}")
-    if len(st.session_state["data"]) >= 10:
-        if st.button("🔮 Dự đoán tiếp theo"):
-            if st.session_state["trained_model"] is None:
-                model, history = train_tf_model(st.session_state["data"], model_type, epochs=epochs)
-                st.session_state["trained_model"] = model
-                accuracy = history.history["accuracy"][-1]
-                st.session_state["accuracy"] = accuracy
-                st.write(f"✅ Độ chính xác mô hình {model_type}: {round(accuracy * 100, 2)}%")
-            else:
-                st.write("✅ Mô hình đã được huấn luyện trước đó.")
-                accuracy = st.session_state.get("accuracy", None)
-                if accuracy is not None:
-                    st.write(f"✅ Độ chính xác mô hình {model_type}: {round(accuracy * 100, 2)}%")
-                else:
-                    st.info("ℹ️ Chưa có thông tin độ chính xác.")
-    else:
-        st.warning("⚠️ Cần ít nhất 10 kết quả.")
-
+        return "Không đủ dữ liệu",
