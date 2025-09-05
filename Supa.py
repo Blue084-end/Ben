@@ -5,20 +5,17 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 from supabase import create_client
 import uuid
-import os
-from dotenv import load_dotenv
 
-# Load biến môi trường
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# 🔐 Kết nối Supabase bằng st.secrets
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Cấu hình giao diện
+# 🎨 Cấu hình giao diện
 st.set_page_config(page_title="Baccarat Predictor Pro", layout="wide")
 st.title("🎲 Baccarat Predictor Pro")
 
-# Nhập email người dùng
+# 📧 Nhập email người dùng
 user_email = st.text_input("📧 Nhập email để bắt đầu:", key="email")
 
 # Tabs giao diện
@@ -185,5 +182,5 @@ with tab4:
                 if confirm == "Có":
                     delete_result(selected_id)
                     st.warning("Đã xóa bản ghi!")
-
-        st.subheader("📊
+    else:
+        st.info("Vui lòng nhập email để quản lý dữ liệu.")
