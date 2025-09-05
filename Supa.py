@@ -45,7 +45,7 @@ with tab1:
 
     st.subheader("📋 Dữ liệu đã nhập")
     df = pd.DataFrame(st.session_state["data"], columns=["Result"])
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df)
 
     def encode_result(r):
         return {"Player": 0, "Banker": 1, "Tie": 2}[r]
@@ -64,7 +64,6 @@ with tab1:
         pred_label = ["Player", "Banker", "Tie"][prediction]
         st.success(f"🔮 Dự đoán tiếp theo: **{pred_label}**")
 
-        # Lưu phiên chơi
         stats = {
             "total_games": len(st.session_state["data"]),
             "player_count": st.session_state["data"].count("Player"),
@@ -116,7 +115,7 @@ with tab2:
     st.subheader("⏮️ Replay lịch sử")
     if st.session_state["replay"]:
         replay_df = pd.DataFrame(st.session_state["replay"], columns=["Lịch sử"])
-        st.dataframe(replay_df, use_container_width=True)
+        st.dataframe(replay_df)
     else:
         st.info("Chưa có lịch sử để hiển thị.")
 
@@ -165,7 +164,7 @@ with tab4:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         filtered_df = df[(df["timestamp"].dt.date >= start) & (df["timestamp"].dt.date <= end)]
 
-        st.dataframe(filtered_df[["id", "result", "timestamp"]], use_container_width=True)
+        st.dataframe(filtered_df[["id", "result", "timestamp"]])
 
         selected_id = st.selectbox("🔍 Chọn ID để chỉnh sửa hoặc xóa:", filtered_df["id"])
         selected_row = filtered_df[filtered_df["id"] == selected_id].iloc[0]
