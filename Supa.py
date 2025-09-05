@@ -9,6 +9,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 st.set_page_config(page_title="Baccarat AI", layout="wide")
+if "new_result" not in st.session_state:
+    st.session_state["new_result"] = ""
 
 # Sidebar menu
 st.sidebar.title("🔧 Tuỳ chọn mô hình dự đoán")
@@ -31,7 +33,7 @@ if st.session_state["new_result"]:
         st.success(f"✅ Đã thêm: {result}")
     else:
         st.error("❌ Kết quả không hợp lệ.")
-    st.session_state["new_result"] = ""
+
 
 st.subheader("📋 Dữ liệu hiện tại")
 st.write(st.session_state["data"])
