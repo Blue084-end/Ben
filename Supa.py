@@ -11,6 +11,8 @@ import torch.optim as optim
 st.set_page_config(page_title="Baccarat AI", layout="wide")
 if "new_result" not in st.session_state:
     st.session_state["new_result"] = ""
+if "trained_model" not in st.session_state:
+    st.session_state["trained_model"] = None
 
 # Sidebar menu
 st.sidebar.title("🔧 Tuỳ chọn mô hình dự đoán")
@@ -19,6 +21,7 @@ show_markov = st.sidebar.checkbox("🔁 Bật Markov Chain", value=(selected_mod
 show_lstm = st.sidebar.checkbox("🔮 Bật RNN (LSTM)", value=(selected_model == "RNN (LSTM)"))
 show_gru = st.sidebar.checkbox("🔁 Bật GRU", value=(selected_model == "GRU"))
 show_torch = st.sidebar.checkbox("🔥 Bật RNN (PyTorch)", value=(selected_model == "RNN (PyTorch)"))
+epochs = st.sidebar.slider("Số epoch huấn luyện", min_value=5, max_value=50, value=15)
 
 if "data" not in st.session_state:
     st.session_state["data"] = []
@@ -34,9 +37,23 @@ if st.session_state["new_result"]:
     else:
         st.error("❌ Kết quả không hợp lệ.")
 
+# Xóa dữ liệu & hoàn tác
+if st.button("🗑️ Xóa toàn bộ dữ liệu"):
+    st.session_state["data"] = []
+    st.success("✅ Đã xóa toàn bộ dữ liệu.")
+
+if st.session_state["data"]:
+    last_result = st.session_state["data"][-1]
+    if st.button(f"↩️ Hoàn tác kết quả cuối: {last_result}"):
+        st.session_state["data"].pop()
+        st.success(f"✅ Đã hoàn tác: {last_result}")
 
 st.subheader("📋 Dữ liệu hiện tại")
-st.write(st.session_state["data"])
+if st.session_state["data"]:
+    df_history = pd.DataFrame({"Kết quả": st.session_state["data"]})
+    st.dataframe(df_history)
+else:
+    st.info("Chưa có dữ liệu.")
 
 # Tổng quan
 if selected_model == "Tổng quan":
@@ -155,24 +172,23 @@ def predict_torch(model, data, seq_length=5):
     mapping = {0: "Player", 1: "Banker", 2: "Tie"}
     return mapping[np.argmax(probs)], probs
 
+# Dự đoán theo thống kê đơn giản
+def baseline_prediction(data):
+    if not data:
+        return "Không có dữ liệu"
+    return max(set(data), key=data.count)
+
+if st.button("📊 Dự đoán theo tần suất"):
+    baseline = baseline_prediction(st.session_state["data"])
+    st.info(f"🔍 Dự đoán theo thống kê: {baseline}")
+
 # Hiển thị kết quả dự đoán
 if show_lstm or show_gru:
     model_type = "LSTM" if show_lstm else "GRU"
     st.subheader(f"🔮 Dự đoán Baccarat bằng {model_type}")
     if len(st.session_state["data"]) >= 10:
-        model, history = train_tf_model(st.session_state["data"], model_type)
-        prediction, probs = predict_tf(model, st.session_state["data"])
-        st.success(f"✅ Dự đoán tiếp theo: {prediction}")
-        st.write({ "Player": round(probs[0], 2), "Banker": round(probs[1], 2), "Tie": round(probs[2], 2) })
-    else:
-        st.warning("⚠️ Cần ít nhất 10 kết quả.")
-
-if show_torch:
-    st.subheader("🔥 Dự đoán Baccarat bằng PyTorch")
-    if len(st.session_state["data"]) >= 10:
-        model = train_torch_model(st.session_state["data"])
-        prediction, probs = predict_torch(model, st.session_state["data"])
-        st.success(f"✅ Dự đoán tiếp theo: {prediction}")
-        st.write({ "Player": round(probs[0], 2), "Banker": round(probs[1], 2), "Tie": round(probs[2], 2) })
-    else:
-        st.warning("⚠️ Cần ít nhất 10 kết quả.")
+        if st.button("🔮 Dự đoán tiếp theo"):
+            if st.session_state["trained_model"] is None:
+                model, history = train_tf_model(st.session_state["data"], model_type, epochs=epochs)
+                st.session_state["trained_model"] = model
+                accuracy =
