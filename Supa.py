@@ -1,185 +1,176 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestClassifier
-from supabase import create_client
-import uuid
+import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
-# 🔐 Kết nối Supabase bằng st.secrets
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+st.set_page_config(page_title="Baccarat AI", layout="wide")
 
-# 🎨 Cấu hình giao diện
-st.set_page_config(page_title="Baccarat Predictor Pro", layout="wide")
-st.title("🎲 Baccarat Predictor Pro")
+# Sidebar menu
+st.sidebar.title("🔧 Tuỳ chọn mô hình dự đoán")
+selected_model = st.sidebar.radio("Chọn mô hình", ["Tổng quan", "Markov Chain", "RNN (LSTM)", "GRU", "RNN (PyTorch)"])
+show_markov = st.sidebar.checkbox("🔁 Bật Markov Chain", value=(selected_model == "Markov Chain"))
+show_lstm = st.sidebar.checkbox("🔮 Bật RNN (LSTM)", value=(selected_model == "RNN (LSTM)"))
+show_gru = st.sidebar.checkbox("🔁 Bật GRU", value=(selected_model == "GRU"))
+show_torch = st.sidebar.checkbox("🔥 Bật RNN (PyTorch)", value=(selected_model == "RNN (PyTorch)"))
 
-# 📧 Nhập email người dùng
-user_email = st.text_input("📧 Nhập email để bắt đầu:", key="email")
-
-# Tabs giao diện
-tab1, tab2, tab3, tab4 = st.tabs(["🔮 Dự đoán", "📊 Phân tích", "📜 Lịch sử", "🛠 Quản lý dữ liệu"])
-
-# Session state
 if "data" not in st.session_state:
     st.session_state["data"] = []
-if "model" not in st.session_state:
-    st.session_state["model"] = None
-if "replay" not in st.session_state:
-    st.session_state["replay"] = []
 
-# 🔮 Tab 1: Dự đoán
-with tab1:
-    st.subheader("📥 Nhập kết quả mới")
-    result = st.radio("Chọn kết quả ván vừa rồi:", ["Player", "Banker", "Tie"])
-    if st.button("➕ Thêm kết quả"):
+st.title("🎲 Phân tích & Dự đoán Baccarat")
+st.text_input("Nhập kết quả (Player, Banker, Tie):", key="new_result")
+
+if st.session_state["new_result"]:
+    result = st.session_state["new_result"].strip().capitalize()
+    if result in ["Player", "Banker", "Tie"]:
         st.session_state["data"].append(result)
-        st.session_state["replay"].append(result)
-        if user_email:
-            supabase.table("baccarat_results").insert({
-                "email": user_email,
-                "result": result,
-                "timestamp": pd.Timestamp.now().isoformat()
-            }).execute()
-
-    st.subheader("📋 Dữ liệu đã nhập")
-    df = pd.DataFrame(st.session_state["data"], columns=["Result"])
-    st.dataframe(df)
-
-    def encode_result(r):
-        return {"Player": 0, "Banker": 1, "Tie": 2}[r]
-
-    if len(st.session_state["data"]) >= 5:
-        encoded = [encode_result(r) for r in st.session_state["data"]]
-        X, y = [], []
-        for i in range(len(encoded) - 3):
-            X.append(encoded[i:i+3])
-            y.append(encoded[i+3])
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
-        model.fit(X, y)
-        st.session_state["model"] = model
-        latest = encoded[-3:]
-        prediction = model.predict([latest])[0]
-        pred_label = ["Player", "Banker", "Tie"][prediction]
-        st.success(f"🔮 Dự đoán tiếp theo: **{pred_label}**")
-
-        stats = {
-            "total_games": len(st.session_state["data"]),
-            "player_count": st.session_state["data"].count("Player"),
-            "banker_count": st.session_state["data"].count("Banker"),
-            "tie_count": st.session_state["data"].count("Tie")
-        }
-        session_id = str(uuid.uuid4())
-        supabase.table("baccarat_sessions").insert({
-            "email": user_email,
-            "session_id": session_id,
-            "model_info": {"n_estimators": 100, "random_state": 42},
-            "stats": stats,
-            "timestamp": pd.Timestamp.now().isoformat()
-        }).execute()
+        st.success(f"✅ Đã thêm: {result}")
     else:
-        st.info("Cần ít nhất 5 kết quả để bắt đầu dự đoán.")
+        st.error("❌ Kết quả không hợp lệ.")
+    st.session_state["new_result"] = ""
 
-# 📊 Tab 2: Phân tích
-with tab2:
-    st.subheader("📈 Biểu đồ tần suất kết quả")
-    if not df.empty:
+st.subheader("📋 Dữ liệu hiện tại")
+st.write(st.session_state["data"])
+
+# Tổng quan
+if selected_model == "Tổng quan":
+    st.subheader("📊 Tổng quan hệ thống")
+    st.markdown("""
+    - ✅ Nhập kết quả Baccarat theo thời gian thực
+    - 🔁 Phân tích Markov Chain để hiểu xu hướng chuyển tiếp
+    - 🔮 Dự đoán kết quả tiếp theo bằng RNN (LSTM, GRU, PyTorch)
+    - 📈 Hiển thị xác suất dự đoán
+    - 🧭 Tuỳ chọn bật/tắt từng mô hình trong sidebar
+    """)
+
+# Markov Chain
+def build_markov_chain(data):
+    states = ["Player", "Banker", "Tie"]
+    matrix = pd.DataFrame(0, index=states, columns=states)
+    for i in range(len(data) - 1):
+        matrix.loc[data[i], data[i + 1]] += 1
+    prob_matrix = matrix.div(matrix.sum(axis=1), axis=0).fillna(0)
+    return matrix, prob_matrix
+
+if show_markov:
+    st.subheader("🔁 Phân tích Markov Chain")
+    if len(st.session_state["data"]) >= 2:
+        count_matrix, prob_matrix = build_markov_chain(st.session_state["data"])
+        st.dataframe(prob_matrix.style.format("{:.2f}"))
         fig, ax = plt.subplots()
-        sns.countplot(x="Result", data=df, ax=ax, palette="Set2")
-        ax.set_title("Tần suất Player / Banker / Tie")
+        sns.heatmap(prob_matrix, annot=True, cmap="Blues", fmt=".2f", ax=ax)
         st.pyplot(fig)
     else:
-        st.info("Chưa có dữ liệu để hiển thị biểu đồ.")
+        st.info("Cần ít nhất 2 kết quả.")
 
-    st.subheader("🚨 Cảnh báo chuỗi lặp")
-    def detect_streak(data, threshold=4):
-        streaks = []
-        count = 1
-        for i in range(1, len(data)):
-            if data[i] == data[i-1]:
-                count += 1
-                if count >= threshold:
-                    streaks.append((data[i], count))
-            else:
-                count = 1
-        return streaks
+# TensorFlow RNN
+def encode_sequence(data):
+    mapping = {"Player": 0, "Banker": 1, "Tie": 2}
+    return [mapping[d] for d in data if d in mapping]
 
-    streaks = detect_streak(st.session_state["data"])
-    if streaks:
-        for s in streaks:
-            st.warning(f"⚠️ Chuỗi {s[0]} lặp lại {s[1]} lần liên tiếp!")
+def create_sequences(encoded, seq_length=5):
+    X, y = [], []
+    for i in range(len(encoded) - seq_length):
+        X.append(encoded[i:i+seq_length])
+        y.append(encoded[i+seq_length])
+    return np.array(X).reshape(-1, seq_length, 1), np.array(y)
+
+def build_model(model_type="LSTM", seq_length=5, num_classes=3):
+    RNNLayer = tf.keras.layers.LSTM if model_type == "LSTM" else tf.keras.layers.GRU
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(seq_length, 1)),
+        RNNLayer(64),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(num_classes, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+def train_tf_model(data, model_type="LSTM", seq_length=5, epochs=30):
+    encoded = encode_sequence(data)
+    X, y = create_sequences(encoded, seq_length)
+    model = build_model(model_type, seq_length)
+    history = model.fit(X, y, epochs=epochs, verbose=0)
+    return model, history
+
+def predict_tf(model, data, seq_length=5):
+    encoded = encode_sequence(data)
+    if len(encoded) < seq_length:
+        return "Không đủ dữ liệu", [0, 0, 0]
+    input_seq = np.array(encoded[-seq_length:]).reshape(1, seq_length, 1)
+    pred = model.predict(input_seq)[0]
+    mapping = {0: "Player", 1: "Banker", 2: "Tie"}
+    return mapping[np.argmax(pred)], pred
+
+# PyTorch RNN
+class RNNModelTorch(nn.Module):
+    def __init__(self, input_size=1, hidden_size=64, output_size=3):
+        super().__init__()
+        self.rnn = nn.GRU(input_size, hidden_size, batch_first=True)
+        self.fc = nn.Sequential(
+            nn.Linear(hidden_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, output_size)
+        )
+
+    def forward(self, x):
+        out, _ = self.rnn(x)
+        out = out[:, -1, :]
+        return self.fc(out)
+
+def train_torch_model(data, seq_length=5, epochs=30):
+    encoded = encode_sequence(data)
+    X, y = create_sequences(encoded, seq_length)
+    X = torch.tensor(X, dtype=torch.float32)
+    y = torch.tensor(y, dtype=torch.long)
+
+    model = RNNModelTorch()
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    loss_fn = nn.CrossEntropyLoss()
+
+    for _ in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        output = model(X)
+        loss = loss_fn(output, y)
+        loss.backward()
+        optimizer.step()
+    return model
+
+def predict_torch(model, data, seq_length=5):
+    encoded = encode_sequence(data)
+    if len(encoded) < seq_length:
+        return "Không đủ dữ liệu", [0, 0, 0]
+    input_seq = torch.tensor(encoded[-seq_length:], dtype=torch.float32).reshape(1, seq_length, 1)
+    model.eval()
+    with torch.no_grad():
+        output = model(input_seq)
+        probs = torch.softmax(output, dim=1).numpy()[0]
+    mapping = {0: "Player", 1: "Banker", 2: "Tie"}
+    return mapping[np.argmax(probs)], probs
+
+# Hiển thị kết quả dự đoán
+if show_lstm or show_gru:
+    model_type = "LSTM" if show_lstm else "GRU"
+    st.subheader(f"🔮 Dự đoán Baccarat bằng {model_type}")
+    if len(st.session_state["data"]) >= 10:
+        model, history = train_tf_model(st.session_state["data"], model_type)
+        prediction, probs = predict_tf(model, st.session_state["data"])
+        st.success(f"✅ Dự đoán tiếp theo: {prediction}")
+        st.write({ "Player": round(probs[0], 2), "Banker": round(probs[1], 2), "Tie": round(probs[2], 2) })
     else:
-        st.success("✅ Không có chuỗi lặp bất thường.")
+        st.warning("⚠️ Cần ít nhất 10 kết quả.")
 
-    st.subheader("⏮️ Replay lịch sử")
-    if st.session_state["replay"]:
-        replay_df = pd.DataFrame(st.session_state["replay"], columns=["Lịch sử"])
-        st.dataframe(replay_df)
+if show_torch:
+    st.subheader("🔥 Dự đoán Baccarat bằng PyTorch")
+    if len(st.session_state["data"]) >= 10:
+        model = train_torch_model(st.session_state["data"])
+        prediction, probs = predict_torch(model, st.session_state["data"])
+        st.success(f"✅ Dự đoán tiếp theo: {prediction}")
+        st.write({ "Player": round(probs[0], 2), "Banker": round(probs[1], 2), "Tie": round(probs[2], 2) })
     else:
-        st.info("Chưa có lịch sử để hiển thị.")
-
-# 📜 Tab 3: Lịch sử phiên chơi
-with tab3:
-    st.subheader("📜 Lịch sử phiên chơi")
-    start_date = st.date_input("📅 Từ ngày", value=pd.Timestamp.now().date() - pd.Timedelta(days=7))
-    end_date = st.date_input("📅 Đến ngày", value=pd.Timestamp.now().date())
-
-    def get_sessions(email):
-        response = supabase.table("baccarat_sessions").select("*").eq("email", email).order("timestamp", desc=True).execute()
-        return response.data
-
-    if user_email:
-        sessions = get_sessions(user_email)
-        filtered = [s for s in sessions if start_date <= pd.to_datetime(s["timestamp"]).date() <= end_date]
-        for s in filtered:
-            with st.expander(f"🧾 Phiên {s['session_id']} - {s['timestamp']}"):
-                st.json(s["model_info"])
-                st.json(s["stats"])
-    else:
-        st.info("Vui lòng nhập email để xem lịch sử.")
-
-# 🛠 Tab 4: Quản lý dữ liệu
-with tab4:
-    st.subheader("🛠 Quản lý dữ liệu")
-    def get_user_data(email):
-        response = supabase.table("baccarat_results").select("*").eq("email", email).order("timestamp", desc=True).execute()
-        return response.data
-
-    def update_result(record_id, new_result):
-        return supabase.table("baccarat_results").update({
-            "result": new_result,
-            "timestamp": pd.Timestamp.now().isoformat()
-        }).eq("id", record_id).execute()
-
-    def delete_result(record_id):
-        return supabase.table("baccarat_results").delete().eq("id", record_id).execute()
-
-    if user_email:
-        start = st.date_input("📅 Từ ngày", value=pd.Timestamp.now().date() - pd.Timedelta(days=7), key="filter_start")
-        end = st.date_input("📅 Đến ngày", value=pd.Timestamp.now().date(), key="filter_end")
-
-        user_data = get_user_data(user_email)
-        df = pd.DataFrame(user_data)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        filtered_df = df[(df["timestamp"].dt.date >= start) & (df["timestamp"].dt.date <= end)]
-
-        st.dataframe(filtered_df[["id", "result", "timestamp"]])
-
-        selected_id = st.selectbox("🔍 Chọn ID để chỉnh sửa hoặc xóa:", filtered_df["id"])
-        selected_row = filtered_df[filtered_df["id"] == selected_id].iloc[0]
-        new_result = st.selectbox("✏️ Chỉnh sửa kết quả:", ["Player", "Banker", "Tie"], index=["Player", "Banker", "Tie"].index(selected_row["result"]))
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ Cập nhật kết quả"):
-                update_result(selected_id, new_result)
-                st.success("Đã cập nhật thành công!")
-        with col2:
-            if st.button("🗑️ Xóa bản ghi"):
-                confirm = st.radio("❓ Bạn có chắc muốn xóa?", ["Không", "Có"], index=0)
-                if confirm == "Có":
-                    delete_result(selected_id)
-                    st.warning("Đã xóa bản ghi!")
-    else:
-        st.info("Vui lòng nhập email để quản lý dữ liệu.")
+        st.warning("⚠️ Cần ít nhất 10 kết quả.")
